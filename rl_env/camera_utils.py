@@ -16,7 +16,7 @@ def parse_resolution(res_text, default=(640, 640)):
 
 
 def configure_camera_sensor(env_cfg, resolution_text, update_period, label):
-    """Apply the configured wrist-camera resolution/period (train, play and validator).
+    """Apply the configured wrist-camera resolution/period (training and validation).
 
     Returns (width, height). Warns when the size differs from the YOLO calibration.
     """

@@ -25,7 +25,7 @@ def bootstrap_inference_assets(default=None):
     The selected absolute path becomes PLAY_DEFAULTS['checkpoint']; consumers
     must reuse it rather than searching for latest after config import.
     """
-    if Path(sys.argv[0]).name not in ("play.py", "validate_inference.py"):
+    if Path(sys.argv[0]).name != "evaluate.py":
         return default
     selected = checkpoint_from_argv(default) or default
     if not selected:

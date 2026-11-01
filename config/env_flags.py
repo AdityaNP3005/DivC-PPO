@@ -2,11 +2,8 @@ from __future__ import annotations
 
 """Single home for environment-variable parsing + device resolution.
 
-`run_ablation.sh` selects ablation variants by exporting env vars
-(ASYMMETRIC_CRITIC / DECOMPOSED_ADVANTAGE /
-RL_CONTROL_MODE / SEED). Historically the truthy parsing was duplicated in
-train_ur10e.py and env_cfg.py; this module is the one place that logic should
-live so the two can never drift.
+The presets in config/experiment.py are environment variables (DECOMPOSED_ADVANTAGE,
+REWARD_ERROR_SOURCE, SEED, ...); this module is the one place that parses them.
 """
 
 import os

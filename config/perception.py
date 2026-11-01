@@ -36,7 +36,7 @@ YOLO_DEFAULTS = {
 
 
 def publish_yolo_env(args) -> None:
-    """Export the resolved detector settings for the YOLO cache (train, play, validator)."""
+    """Export the resolved detector settings for the YOLO cache (training and validation)."""
     os.environ["YOLO_MODEL_PATH"] = str(args.yolo_model_path)
     os.environ["YOLO_CONF"] = str(args.yolo_conf)
     os.environ["YOLO_IOU"] = str(args.yolo_iou)
@@ -45,7 +45,7 @@ def publish_yolo_env(args) -> None:
 
 # Single source of truth for YOLO cache normalization.
 # Must match CAMERA_WIDTH above and the max expected EE-to-target depth.
-# The YOLO cache writes using these; train and play read them back.
+# The YOLO cache writes using these; training and validation read them back.
 YOLO_CACHE_NORM_PX: float = 640.0   # images are 640 px wide
 YOLO_CACHE_NORM_DEPTH_M: float = 0.5  # max EE-to-cylinder depth ≈ 0.50 m
 

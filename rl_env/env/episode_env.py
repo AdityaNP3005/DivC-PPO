@@ -1,7 +1,7 @@
 """Project-owned episode boundary integration; shared IsaacLab stays untouched.
 
 UR10eEpisodeEnv captures the pre-reset policy observation; Sb3VecEnvWrapper hands it to
-SB3/VecNormalize as terminal_observation (train, play, validator, tools).
+SB3/VecNormalize as terminal_observation (training and validation).
 """
 
 from isaaclab.envs import ManagerBasedRLEnv

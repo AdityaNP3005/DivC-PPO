@@ -1,9 +1,9 @@
 __pycache__/
 *.py[cod]
 logs/
-play_outputs/
+eval_outputs/
 .venv/
 .cache/
 *.swp
 *.swo
-results/
+results*/

@@ -18,7 +18,6 @@ from config.task import (
     OBJECT_CYL_HEIGHT_M,
     YOLO_CONFIDENCE_THRESHOLD_PENALTY,
 )
-from rl_env.control.scripted_grasp import scripted_lift_success_termination
 from rl_env.env.runtime import (
     EE_LINK_NAME,
     JOINT_NAMES_ACTION_EXPR,
@@ -133,9 +132,8 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """An episode ends after a successful lift or at the time limit."""
+    """Episodes end only at the time limit."""
 
-    lift_success = DoneTerm(func=scripted_lift_success_termination)
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
 

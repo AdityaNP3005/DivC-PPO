@@ -54,7 +54,7 @@ def checkpoint_actor_depth(cfg: dict) -> bool:
 
 
 def publish_run_mode(args) -> None:
-    """Export the flags rl_env.env.runtime reads when the env config is imported (train, play, validator)."""
+    """Export the flags rl_env.env.runtime reads when the env config is imported (training and validation)."""
     os.environ["RL_CONTROL_MODE"] = args.mode
     os.environ["ASYMMETRIC_CRITIC"] = "1" if args.asymmetric_critic else "0"
     os.environ["ACTOR_DEPTH_ENABLED"] = "1" if args.actor_depth_enabled else "0"

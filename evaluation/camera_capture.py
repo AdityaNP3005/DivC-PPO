@@ -1,4 +1,4 @@
-"""Draw the cached YOLO detection on a camera frame (play overlay, training probe).
+"""Draw the cached YOLO detection on a camera frame (training camera probe).
 
 The detection itself always comes from rl_env.perception.yolo_cache (the same values
 the policy sees); this module only denormalizes and draws it. No Isaac Sim imports.

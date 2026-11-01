@@ -10,12 +10,12 @@ Design notes:
   hand-rolled reader yields nothing.
 - The task metrics (det_rate, crane_err_mean, gt_error_norm) are logged under the
   ``task/`` namespace by TrainingMonitorCallback._record_rollout_metrics_to_logger
-  (training/callbacks/monitor.py), so play-side plotting stays in sync with training.
+  (training/callbacks/monitor.py), so the plots read the same tags as training.
 
 Usage (standalone, no Isaac needed):
     python -m evaluation.training_plots <run_dir> [--out <out_dir>]
 
-Or from play.py:
+Or from Python:
     from evaluation.training_plots import generate_training_plots
     generate_training_plots(run_dir, out_dir, title=run_tag)
 """

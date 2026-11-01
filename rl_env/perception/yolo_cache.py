@@ -4,7 +4,7 @@ from __future__ import annotations
 
 One inference per control-step scene state (reset invalidates it), stored on
 env._yolo_detection_cache and read by observations, vision rewards, the training
-probe/monitor and the play overlay. Values are normalized to [0, 1]:
+probe and monitor. Values are normalized to [0, 1]:
     center_norm [N,2], size_norm [N,2]   pixels / YOLO_CACHE_NORM_PX
     depth_norm [N,1]                     box-area depth, else center depth, / YOLO_CACHE_NORM_DEPTH_M
     depth_area_norm [N,1]                box-area depth only (0 when unavailable)

@@ -1,9 +1,9 @@
-"""Checkpoint-metadata inference for play (pure, no Isaac Sim).
+"""Checkpoint-metadata inference for validation (pure, no Isaac Sim).
 
 These run BEFORE Isaac Sim launches: they recover
 the actor/critic settings the checkpoint was trained with (from its
 params/agent.yaml) so the env can be rebuilt to match the saved policy's obs/action
-dims. No Isaac dependency; control is Cartesian-only. Edit here, not play.py.
+dims. No Isaac dependency; control is Cartesian-only.
 """
 
 import glob

@@ -2,7 +2,7 @@
 
 
 def run(context):
-    # Imported here, not at module top: validate_inference imports this module before
+    # Imported here, not at module top: evaluate imports this module before
     # setup() launches Isaac, and rl_env.env needs the running app.
     import math
     import os
@@ -70,7 +70,7 @@ def run(context):
         return gt_error_w.detach(), gt_at.detach(), near_now.detach(), ee_pos_w.detach()
 
 
-    # ─── 7. Loop validasi ────────────────────────────────────────────────────────
+    # ─── 7. Validation loop ────────────────────────────────────────────────────────
     if args_cli.max_steps and int(args_cli.max_steps) > 0:
         MAX_STEPS = int(args_cli.max_steps)
     else:
@@ -85,7 +85,7 @@ def run(context):
     except Exception:
         DT = float(getattr(env_cfg, "decimation", 2)) * float(env_cfg.sim.dt)
     DT3 = DT ** 3
-    STAY_REQ = int(SCRIPTED_STAY_STEPS_REQUIRED)   # 20 consecutive in-band steps (grasp trigger)
+    STAY_REQ = int(SCRIPTED_STAY_STEPS_REQUIRED)   # 20 consecutive in-band steps (stable success)
     print(f"[VALIDATE] control dt={DT:.5f}s | stay_req={STAY_REQ} steps | success tol xy="
           f"{GT_SUCCESS_XY_TOL_M*1000:.1f}mm z={GT_SUCCESS_Z_TOL_M*1000:.1f}mm", flush=True)
 
@@ -371,8 +371,7 @@ def run(context):
     require_valid_metrics(metrics)
     atomic_json(os.path.join(out_dir, "inference_metrics.json"), metrics)
 
-    # Per-episode raw arrays (mm) → lets plot_validation.py regenerate figures without
-    # re-running the sim.
+    # Per-episode raw arrays (mm), read by tools/figures.py without re-running the sim.
     np.savez(
         os.path.join(out_dir, "inference_records.npz"),
         exy_mm=np.asarray([v * 1000 for v in rec_exy], dtype=np.float64),
@@ -441,14 +440,6 @@ def run(context):
     with open(os.path.join(out_dir, "validation_summary.txt"), "w") as f:
         f.write(summary_txt + "\n")
     print("\n" + summary_txt, flush=True)
-
-    # ── Per-metric inference figures (one file each; regenerable on host) ──
-    try:
-        from plot_validation import render_all as _render_all
-        _figs = _render_all(out_dir)
-        print(f"[INFO] {len(_figs)} inference figures saved: {', '.join(_figs)}", flush=True)
-    except Exception as e:
-        print(f"[WARN] plotting failed (regenerate on the host: python3 plot_validation.py {out_dir}): {e}", flush=True)
 
     print(f"[DONE] Output → {out_dir}", flush=True)
     env.close()

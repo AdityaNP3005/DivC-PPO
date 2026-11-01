@@ -103,7 +103,7 @@ class RewardTermLoggerCallback(BaseCallback):
         self.logger.record("task/reward_reach_rate", self._ep_success_count / count)
         self.logger.record("rewards/episodes_counted", float(count))
         if not self._source_printed:
-            print("[RewardLogger] Per-episode reward logging aktif (rewards/* = mean per-step over completed "
+            print("[RewardLogger] Per-episode reward logging on (rewards/* = mean per-step over completed "
                   "episodes; rewards/*_ep_sum = per-episode total; task/reward_reach_rate added).")
             self._source_printed = True
         self._ep_rew_sum = {}
@@ -225,7 +225,7 @@ class RewardTermLoggerCallback(BaseCallback):
                     source_name = "env.extras['log']"
 
             if logged_any and not self._source_printed:
-                print(f"[RewardLogger] Per-term reward logging aktif: source={source_name}")
+                print(f"[RewardLogger] Per-term reward logging on: source={source_name}")
                 self._source_printed = True
             elif not logged_any and not self._warned_reward_logger:
                 print("[RewardLogger] No reward term source found; TensorBoard per-term reward logging skipped.")

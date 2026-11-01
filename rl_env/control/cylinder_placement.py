@@ -53,9 +53,8 @@ def place_cylinder_under_gripper(
         offset_w = torch.bmm(rot_mat, offset_b.unsqueeze(-1)).squeeze(-1)
         target_pos_w = target_pos_w + offset_w
     if radial_offset_m is not None and float(radial_offset_m) > 0.0:
-        # PLAY stress test: place the object at the FARTHEST trained distance (fixed radius),
-        # but a RANDOM direction each reset — exercises the policy at the edge of its trained
-        # range from every angle. Per-axis ranges above are ignored in this mode.
+        # Fixed-radius placement in a random direction each reset (the OOD radius conditions).
+        # Per-axis ranges above are ignored in this mode.
         ang = torch.empty((len(env_ids),), device=env.device, dtype=target_pos_w.dtype).uniform_(
             0.0, 2.0 * math.pi
         )

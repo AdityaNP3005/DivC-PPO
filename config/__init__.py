@@ -3,7 +3,7 @@ from __future__ import annotations
 """Tunable configuration for single-actor PPO and DivC-PPO.
 
 This package holds the knobs a researcher tweaks per experiment, split by concern:
-    training      — TRAIN_DEFAULTS, PPO_DEFAULTS, RESUME_DEFAULTS, PLAY_DEFAULTS
+    training      — TRAIN_DEFAULTS, PPO_DEFAULTS, RESUME_DEFAULTS, PLAY_DEFAULTS (camera/YOLO defaults for validation)
     policy        — ASYMMETRIC_CRITIC_DEFAULTS, CREDIT_DEFAULTS
     action        — CARTESIAN_ACTION_DEFAULTS (position scale, IK damping, joint speed)
     perception    — camera, YOLO defaults + publish_yolo_env, cache normalization, visual target

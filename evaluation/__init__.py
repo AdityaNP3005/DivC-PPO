@@ -1,13 +1,12 @@
-"""Evaluation/play package.
+"""Evaluation package: deterministic validation and checkpoint handling.
 
-Pure helpers split out of the play.py script (host-importable, no Isaac Sim):
+Host-importable helpers (no Isaac Sim):
 
     checkpoint_rebuild — recover actor/critic settings from a
                          checkpoint's agent.yaml before Isaac launches
     camera_capture     — RGB normalization + drawing the cached YOLO detection
 
-The live camera capture, env build, eval loop, and video/summary writing remain
-in the top-level play.py script (they thread module-global Isaac runtime state).
+The validation loop itself is in inference_run.py, started by evaluate.py.
 """
 
 from evaluation.checkpoint_rebuild import (

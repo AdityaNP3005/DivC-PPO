@@ -22,48 +22,35 @@ are summed into the policy loss. The task is UR10e end-effector positioning in I
 
 ## Requirements
 
-- Linux, an NVIDIA GPU with a recent driver, Docker with the NVIDIA Container Toolkit.
-- The `nvcr.io/nvidia/isaac-sim:5.1.0` image.
-- A host directory `$ISAAC_HOST_ROOT/storage` that contains:
-  - `IsaacLab/`: an Isaac Lab 2.3.2 checkout.
-  - `venv/lib/python3.11/site-packages/`: the packages in `requirements.txt`.
-
-  The container mounts this directory read-only at `/storage`. One way to install the packages
-  with the Isaac Sim Python:
-
+- Isaac Sim 5.1.0 and Isaac Lab 2.3.2.
+- The Python packages in `requirements.txt`, installed into the Isaac Lab Python environment:
   ```bash
-  export ISAAC_HOST_ROOT=/path/to/isaac_root
-  docker run --rm --gpus all --entrypoint bash -e ACCEPT_EULA=Y \
-      -v "$ISAAC_HOST_ROOT/storage:/storage" -v "$PWD:/divc_ppo" nvcr.io/nvidia/isaac-sim:5.1.0 \
-      -c '/isaac-sim/python.sh -m pip install --target /storage/venv/lib/python3.11/site-packages -r /divc_ppo/requirements.txt'
+  isaaclab.sh -p -m pip install -r requirements.txt
   ```
 
 The paper runs used Python 3.11.13, PyTorch 2.7.0+cu128 (bundled with Isaac Sim),
 Stable-Baselines3 2.7.1, Gymnasium 1.2.3 and NumPy 1.26.0. The scene, the cylinder and the
 fine-tuned YOLO11n detector are in `assets/`.
 
-## Quick start
+## Training and evaluation
 
-All commands run from the repository root on the host. `isaac-ctl.sh` starts one long-lived
-container (`./isaac-ctl.sh start --runtime-only`, `./isaac-ctl.sh stop`), and `run.sh` launches
-jobs in it. `GPU=<index>` selects the GPU, and the default is set in `config/training.py`.
+Run from the repository root. Here `isaaclab.sh` is the Isaac Lab launcher (`./isaaclab.sh` in the
+Isaac Lab checkout). A preset from `config/experiment.py` is exported as environment variables
+before the run. `GPU=<index>` selects the GPU (default 0).
 
 ```bash
-export ISAAC_HOST_ROOT=/path/to/isaac_root
+export $(python3 -m config.experiment method divc-ppo)        # or: method ppo
+SEED=42 isaaclab.sh -p train_ur10e.py --headless
 
-./run.sh train divc-ppo --seed 42 --headless          # train, then play videos and a nominal validation
-./run.sh train ppo --seed 42 --headless
-./run.sh train divc-ppo --control shared-ratio --seed 42 --headless   # Table IV controls
-./run.sh train divc-ppo --control scrambled --seed 42 --headless
-./run.sh train divc-ppo --dry-run                     # print the environment of a preset
-
-./run.sh validate logs/sb3/Isaac-UR10e-DivC-Reach-v0/<run>/model.zip --condition ood_r0.14 --seed 42
-./run.sh play logs/sb3/Isaac-UR10e-DivC-Reach-v0/<run>/model.zip
+export $(python3 -m config.experiment condition ood_r0.14)    # or: nominal, noise_0.0005, scale_0.030, ...
+isaaclab.sh -p evaluate.py --checkpoint logs/sb3/Isaac-UR10e-DivC-Reach-v0/<run>/model.zip \
+    --seed 42 --out results/eval/divc-ppo_seed42/ood_r0.14
 ```
 
-Each training run takes 1M environment steps with 128 parallel environments, about 72 minutes
-on our hardware. Models are written to `logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>_.../`,
-and videos and validations to `play_outputs/`.
+A training run requests 1M environment steps over 128 parallel environments. It completes
+after 31 rollouts of 256 steps (1,015,808 steps), which took about 72 minutes on our hardware.
+Models and TensorBoard logs are written to `logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>_.../`.
+The validator writes `inference_metrics.json` and `inference_records.npz` to `--out`.
 
 ## Reproducing the paper
 
@@ -74,18 +61,19 @@ python3 tools/tables.py results         # Tables III-V -> results/tables.md
 python3 tools/figures.py results        # Figs. 3-5 -> results/*.pdf
 ```
 
+`tools/reproduce.py` starts each run with `$ISAACLAB_SH -p` (default: `isaaclab.sh` on `PATH`).
 `config/experiment.py` defines the presets:
 
 | Name | Paper | Setting |
 |---|---|---|
-| `ppo` | PPO baseline | joint advantage and ratio, summed reward |
-| `divc-ppo` | DivC-PPO | per-axis reward streams, advantages and ratios |
+| `method ppo` | PPO baseline | joint advantage and ratio, summed reward |
+| `method divc-ppo` | DivC-PPO | per-axis reward streams, advantages and ratios |
 | `--control shared-ratio` | Table IV | per-axis rewards and advantages, one joint ratio |
 | `--control scrambled` | Table IV | X stream receives the Y reward, Y the Z reward, Z the X reward |
-| `nominal` | Table III, Fig. 3 | object within ±4 cm, 1,024 episodes |
-| `noise_<σ>` | Table V, Fig. 5a | Gaussian noise on the bounding-box center, σ × 640 px |
-| `ood_r<r>` | Table V, Fig. 5b | object at radius r (m) from the nominal point |
-| `scale_<s>` | Table V, Fig. 5c | action scale s (m) instead of 0.015 |
+| `condition nominal` | Table III, Fig. 3 | object within ±4 cm, 1,024 episodes |
+| `condition noise_<σ>` | Table V, Fig. 5a | Gaussian noise on the bounding-box center, σ × 640 px |
+| `condition ood_r<r>` | Table V, Fig. 5b | object at radius r (m) from the nominal point |
+| `condition scale_<s>` | Table V, Fig. 5c | action scale s (m) instead of 0.015 |
 
 Both methods use the same symmetric critic, reward terms (`config/rewards_weights.py`,
 [docs/REWARD_DESIGN.md](docs/REWARD_DESIGN.md)) and PPO hyperparameters (`config/training.py`).
@@ -95,15 +83,16 @@ slightly from ours. Expect results within the spread across seeds reported in th
 ## Repository layout
 
 ```
-config/           presets (experiment.py), task, reward weights, PPO and camera settings
-rl_env/env/       Isaac Lab scene, observations, rewards, events
-rl_env/policy/    DivC-PPO learner (divc_ppo.py), per-axis reward split (axis_rewards.py)
-rl_env/control/   Cartesian action and damped-least-squares IK
-training/         model construction, normalization, callbacks
-evaluation/       deterministic validation and its metrics
-tools/            reproduce.py, tables.py, figures.py
-train_ur10e.py    training entry point
-validate_inference.py, play.py   evaluation and videos
+config/            presets (experiment.py), task, reward weights, PPO and camera settings
+rl_env/env/        Isaac Lab scene, observations, rewards, events
+rl_env/perception/ YOLO detection cache and the observation terms built from it
+rl_env/policy/     DivC-PPO learner (divc_ppo.py), per-axis reward split (axis_rewards.py)
+rl_env/control/    Cartesian action, damped-least-squares IK, object placement
+training/          model construction, reward normalization, callbacks
+evaluation/        deterministic validation and its metrics
+tools/             reproduce.py, tables.py, figures.py
+train_ur10e.py     training entry point
+evaluate.py        evaluation entry point
 ```
 
 ## Citation

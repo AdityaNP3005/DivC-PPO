@@ -178,7 +178,7 @@ def _save_camera_snapshot(rgb, depth, wide_rgb, output_dir, wide_path, cv2):
     wide_u8 = training_rgb_uint8(wide_rgb) if wide_rgb is not None else None
     if wide_u8 is not None and wide_u8.size > 0 and int(wide_u8.max()) > 0:
         cv2.imwrite(wide_path, cv2.cvtColor(wide_u8, cv2.COLOR_RGB2BGR))
-        print(f"[CAMERA] ✔ Wide view tersimpan: {wide_path}")
+        print(f"[CAMERA] Wide view saved: {wide_path}")
     else:
         print("[CAMERA] Wide view is empty; the debug camera has not produced a valid frame.")
 
@@ -219,7 +219,7 @@ def _assert_yolo_detection(rgb_u8, cache, rgb_path, output_dir, args_cli, cv2):
     }
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
-    print(f"[YOLO] ✔ Deteksi tersimpan: {ann_path} | {json_path}")
+    print(f"[YOLO] Detection saved: {ann_path} | {json_path}")
     if not detections:
         raise RuntimeError(
             "The YOLO startup probe detected no object in the wrist camera; "

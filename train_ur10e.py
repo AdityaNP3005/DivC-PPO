@@ -5,14 +5,14 @@ USD Scene : assets/usd/stage_1.usd
 Env ID    : Isaac-UR10e-DivC-Reach-v0
 Model dir : Isaac-UR10e-DivC-Reach-v0
 
-Usage:
-    ./isaac-ctl.sh run_isaaclab train_ur10e.py --headless
-    ./isaac-ctl.sh run_isaaclab train_ur10e.py --headless --checkpoint /divc_ppo/logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>/model.zip
+Usage (repository root; presets in config/experiment.py):
+    export $(python3 -m config.experiment method divc-ppo)   # the preset as env vars
+    SEED=42 isaaclab.sh -p train_ur10e.py --headless
 
 Training defaults are in config/training.py.
 
-Output (otomatis):
-    /divc_ppo/logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>/
+Output:
+    logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>_.../
         model.zip                   ← model final
         model_<N>_steps.zip         ← checkpoint (only the last 5 are kept)
         PPO_1/                      ← TensorBoard logs
@@ -20,7 +20,7 @@ Output (otomatis):
         params/agent.yaml           ← snapshot config PPO
 """
 
-# ─── 1. Parse argumen SEBELUM import Isaac Sim ────────────────────────────────
+# ─── 1. Parse arguments before importing Isaac Sim ────────────────────────────────
 import argparse
 import sys
 import os
@@ -33,8 +33,8 @@ os.environ.setdefault("OMNI_LOG_LEVEL", "warning")
 if os.environ.get("NOISE_EVAL_OUT", "").strip():
     raise SystemExit(
         "NOISE_EVAL_OUT was removed: training does not run the noise evaluation. "
-        "Use YOLO_OBS_NOISE_STD=<sigma> ./run.sh validate --checkpoint <model.zip> "
-        "--out <fresh-directory>; read inference_metrics.json instead of legacy noise JSONL."
+        "Set YOLO_OBS_NOISE_STD=<sigma> and run evaluate.py --checkpoint <model.zip> "
+        "--out <fresh-directory>; read inference_metrics.json."
     )
 
 from evaluation.checkpoint_assets import bootstrap_training_assets
@@ -76,7 +76,7 @@ args_cli = parser.parse_args()
 # keep AppLauncher flags plus --checkpoint for one-off resume.
 resolve_runtime_args(args_cli)
 
-# Bbox-center augmentation is training-only; play/validator never set this flag
+# Bbox-center augmentation is training-only; the validator never sets this flag
 # (the noise evaluation uses YOLO_OBS_NOISE_STD through the validator).
 os.environ["YOLO_TRAIN_BBOX_CENTER_JITTER_ACTIVE"] = "1"
 
@@ -232,7 +232,7 @@ def main():
     env.save(os.path.join(log_dir, "vecnormalize.pkl"))
     from training.run_artifacts import write_training_result
     write_training_result(log_dir, model, args_cli)
-    print(f"[INFO] Model tersimpan: {final_path}")
+    print(f"[INFO] Model saved: {final_path}")
 
     # ─── 14. Tutup environment ────────────────────────────────────────────────
     env.close()

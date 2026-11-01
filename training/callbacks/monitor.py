@@ -178,9 +178,9 @@ class TrainingMonitorCallback(_MonitorStatsMixin, _MonitorPrintMixin, BaseCallba
 
         Without this, det_rate / crane_err_mean / gt_error_norm only exist in the
         printed table and cannot be replotted afterwards. Logging them under the
-        `task/` namespace keeps play-side plotting and training in sync.
+        `task/` namespace keeps the plots and training in sync.
         """
-        # Map internal metric keys -> stable TensorBoard tags consumed by play plotting.
+        # Map internal metric keys -> stable TensorBoard tags consumed by the plots.
         _TAG_MAP = {
             "det_rate": "task/det_rate",
             "crane_err_mean": "task/crane_err_mean",

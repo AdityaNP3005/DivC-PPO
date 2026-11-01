@@ -63,10 +63,9 @@ def build_agent_snapshot_cfg(
     snap["critic_obs_dim"] = obs_dim
     snap["privileged_obs_dim"] = privileged_obs_dim
     snap["z_control_mode"] = "policy"  # explicit compatibility metadata
-    # Persist the TRAINING OBJECT (any OBJECT_USD run) so a manual replay
-    # (./run.sh play) spawns the SAME object at the SAME height/floor + loads the SAME per-object
-    # YOLO — without needing the OBJECT_*/YOLO_MODEL_PATH env vars re-set. play.py restores these
-    # from agent.yaml before config is imported. Empty object_usd → the default primitive cylinder.
+    # Persist the training object so validation spawns the same object and loads the same
+    # detector without the OBJECT_*/YOLO_MODEL_PATH env vars; restored from agent.yaml before
+    # config is imported. Empty object_usd -> the default primitive cylinder.
     from config.task import (
         CYLINDER_FLOOR_Z_M,
         OBJECT_CYL_HEIGHT_M,
@@ -192,7 +191,7 @@ def build_training_config(env, env_cfg, args_cli, params_dir):
         )
         if _updates_until_ep_rew > 1:
             print(
-                "[INFO] Untuk ep_rew_mean tiap verbose, set PPO_DEFAULTS['n_steps']=256 "
+                "[INFO] For ep_rew_mean on every update, set PPO_DEFAULTS['n_steps']=256 "
                 "and batch_size 2048/4096 in config/training.py."
             )
 

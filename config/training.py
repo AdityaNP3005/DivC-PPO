@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-"""Tunable training/runtime knobs: train, PPO optimizer, resume, and play defaults.
+"""Tunable training/runtime knobs: train, PPO optimizer, resume, and validation defaults.
 
 TUNABLE — edit values here for the values you normally use. The runtime CLI is
-intentionally thin; use this file for normal train/play changes.
+intentionally thin; use this file for normal training and validation changes.
 """
 
 from .env_flags import env_float, env_int
@@ -26,17 +26,16 @@ TRAIN_DEFAULTS = {
     # The paper uses the symmetric critic (actor and critic see the same 12-D observation).
     # env ASYMMETRIC_CRITIC=1 enables the privileged critic variant, which the paper does not use.
     "asymmetric_critic": False,
-    # Env-overridable (GPU) so a campaign can be pinned to another free card without
-    # touching this file; every launcher defaults to GPU 1.
-    "gpu": env_int("GPU", 1),
+    # GPU index; override with the GPU env var.
+    "gpu": env_int("GPU", 0),
     "camera_timeout_sec": 8.0,
     "scalar_reward_units": validate_reward_units(
         (os.environ.get("PPO_REWARD_UNITS") or "legacy_rate").strip()
     ),
 }
 
-# Checkpoint selection must precede perception/task imports. Edit the play
-# checkpoint here; remaining camera/detector defaults are populated below.
+# Checkpoint selection must precede perception/task imports. The validator's default
+# checkpoint goes here; remaining camera/detector defaults are populated below.
 PLAY_DEFAULTS = {
     "checkpoint": None,
 }

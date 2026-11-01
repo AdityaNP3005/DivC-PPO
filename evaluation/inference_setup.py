@@ -2,30 +2,28 @@
 
 
 def setup():
-    """
-    Validasi INFERENCE deterministik paralel — UR10e centering.
+    """Deterministic parallel validation of a checkpoint.
 
-    Runs a checkpoint deterministically (no exploration noise) in many parallel envs
-    until at least --min_episodes episodes finish, then measures the GT error distribution
-    (E_xy / E_z / norm), stable success (20 step berturut-turut), precision-hold,
-    and splits bias from jitter. One-step reach is also logged as a diagnostic.
+    Runs the policy without exploration noise in many parallel envs until at least
+    --min_episodes episodes finish, then measures the GT error distribution
+    (E_xy / E_z / norm), stable success (20 consecutive steps in the 1 mm box),
+    near-target failure, time to stable success, and the bias/jitter split.
 
-    This complements the training metrics (stochastic rollouts, from TensorBoard) with
-    deterministic inference metrics, i.e. the precision of the deployed policy.
+    The GT target, EE and success tolerances follow
+    `training/callbacks/monitor_stats.py::_accumulate_gt_stats`, so training and
+    validation metrics are comparable.
 
-    Rumus GT (target/EE/error, toleransi sukses) meniru PERSIS
-    `training/callbacks/monitor_stats.py::_accumulate_gt_stats` so both are comparable.
+    Usage (repository root):
+        isaaclab.sh -p evaluate.py \
+            --checkpoint logs/sb3/<env>/<run>/model.zip --seed 42 --out <empty dir>
 
-    Run from the host:
-        ./run.sh validate --checkpoint /divc_ppo/logs/sb3/.../model.zip --num_envs 128 --min_episodes 1000
-
-    Output → <play_outputs>/<checkpoint_tag>_inference_val_<ts>/:
-        inference_metrics.json   ← statistik lengkap (mean/std/median/p90/p95, bias/jitter)
-        validation_summary.txt   ← tabel 2 metrik bersanding (Training vs Inference)
-        hist_exy.png             ← histogram sebaran E_xy (bias vs scatter secara visual)
+    Output (--out, default eval_outputs/<run>/<model>/inference_<timestamp>/):
+        inference_metrics.json   summary statistics used by tools/tables.py
+        inference_records.npz    per-episode records used by tools/figures.py
+        validation_summary.txt   human-readable summary
     """
 
-    # ─── 1. Parse argumen SEBELUM import Isaac Sim ────────────────────────────────
+    # ─── 1. Parse arguments before importing Isaac Sim ────────────────────────────────
     import argparse
     import os
     import sys
@@ -41,7 +39,7 @@ def setup():
         if _m == "rl_env" or _m.startswith("rl_env."):
             del sys.modules[_m]
 
-    from rl_env.project_config import PLAY_ENV_ID, log_base
+    from rl_env.project_config import TRAIN_ENV_ID, log_base
 
     from config import PLAY_DEFAULTS, TRAIN_DEFAULTS
     from evaluation.inference_bootstrap import (
@@ -55,7 +53,7 @@ def setup():
     from config.training import VALIDATION_DEFAULTS
     from evaluation.checkpoint_contract import METHODS, require_normalizer_method
 
-    parser = argparse.ArgumentParser(description="Validasi inference deterministik paralel UR10e.")
+    parser = argparse.ArgumentParser(description="Deterministic parallel validation of a UR10e checkpoint.")
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Override the PLAY_DEFAULTS checkpoint; if both are empty, use the latest model.zip.")
     parser.add_argument("--seed", type=nonnegative_int, default=None, help="Explicit evaluation seed.")
@@ -67,7 +65,7 @@ def setup():
     parser.add_argument("--max_steps", type=nonnegative_int, default=nonnegative_int(VALIDATION_DEFAULTS["max_steps"]),
                         help="Step limit (0 = auto: ceil(min_ep/num_envs+2)*280).")
     parser.add_argument("--out", type=str, default=None,
-                        help="Folder output. Kosong → <play_outputs>/<tag>_inference_val_<ts>/.")
+                        help="Output folder (must be new or empty). Default: eval_outputs/<run>/<model>/inference_<timestamp>/.")
     AppLauncher.add_app_launcher_args(parser)
 
     # Cameras are required: the policy observes YOLO detections from the wrist camera.
@@ -80,7 +78,7 @@ def setup():
 
     args_cli = parser.parse_args()
 
-    # ── Defaults from PLAY_DEFAULTS (device, YOLO, camera), as in play.py ──
+    # ── Defaults from PLAY_DEFAULTS (device, YOLO, camera) ──
     from config.env_flags import env_int
     args_cli.seed = args_cli.seed if args_cli.seed is not None else env_int("SEED", int(PLAY_DEFAULTS["seed"]))
     args_cli.seed = nonnegative_int(args_cli.seed)
@@ -131,7 +129,7 @@ def setup():
     from rl_env.env import PLAY_OBJECT_FARTHEST_RADIUS_M, UR10eEnvCfg
     from rl_env.env.factory import make_isaac_env
 
-    ENV_ID = PLAY_ENV_ID
+    ENV_ID = TRAIN_ENV_ID
 
     # ─── 3. Output dir ───────────────────────────────────────────────────────────
     checkpoint_tag = os.path.basename(os.path.dirname(checkpoint_path))
@@ -143,11 +141,8 @@ def setup():
     env_cfg = UR10eEnvCfg()
 
     # OOD placement (`ood_r*` conditions): push the object to a FIXED radius, random direction.
-    # This is the TRAIN cfg (not UR10eEnvCfg_PLAY, which forces num_envs=1 + scripted grasp), so
-    # the radial_offset_m that assembly.py sets on the PLAY cfg never reached us — the whole
-    # ood_* family silently measured the nominal ±0.04 square. ponytail: applied ONLY when the
-    # env var is explicitly set; the constant's default (0.04) would switch every nominal run
-    # from uniform-square to fixed-radius ring and break comparability with past results.
+    # Applied only when the env var is set; the constant's default (0.04 m) would otherwise turn
+    # every nominal run from the uniform square into a fixed-radius ring.
     if os.environ.get("PLAY_OBJECT_RADIUS_M", "").strip():
         env_cfg.events.place_cylinder_under_gripper.params["radial_offset_m"] = PLAY_OBJECT_FARTHEST_RADIUS_M
         print(f"[OOD] object placement radius = {PLAY_OBJECT_FARTHEST_RADIUS_M:.4f} m "

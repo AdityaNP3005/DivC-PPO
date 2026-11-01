@@ -47,17 +47,15 @@ def resolve_runtime_args(args_cli) -> None:
     args_cli.checkpoint = args_cli.checkpoint or TRAIN_DEFAULTS["checkpoint"]
     if args_cli.checkpoint and os.environ.get("ABLATION_PROTOCOL"):
         raise ValueError("Matched baseline presets require fresh training; resume through the standalone entrypoint.")
-    # SEED env (forwarded into the container) overrides TRAIN_DEFAULTS["seed"] so a
-    # multi-seed comparison (e.g. SEED=42..46 ./run_ablation.sh 4) runs without editing
-    # run_settings.py. Empty/unset/non-int → TRAIN_DEFAULTS.
+    # The SEED env var overrides TRAIN_DEFAULTS["seed"] (used by tools/reproduce.py).
+    # Empty/unset/non-int -> TRAIN_DEFAULTS.
     _seed_env = (os.environ.get("SEED") or "").strip()
     try:
         args_cli.seed = int(_seed_env) if _seed_env != "" else int(TRAIN_DEFAULTS["seed"])
     except ValueError:
         args_cli.seed = int(TRAIN_DEFAULTS["seed"])
         print(f"[SEED] ignoring non-integer SEED env '{_seed_env}'; using TRAIN_DEFAULTS seed={args_cli.seed}")
-    # Ablation knobs: env var (forwarded by run_ablation.sh) overrides TRAIN_DEFAULTS so the
-    # 4 variants can be launched without editing run_settings.py. Empty/unset → TRAIN_DEFAULTS.
+    # Preset env vars (config/experiment.py) override TRAIN_DEFAULTS. Empty/unset -> TRAIN_DEFAULTS.
     args_cli.mode = require_cartesian_mode(os.environ.get("RL_CONTROL_MODE"))
     args_cli.ppo_head = _parse_ppo_head(os.environ.get("PPO_HEAD") or TRAIN_DEFAULTS.get("PPO_head", "single"))
     _decomposed_requested = bool(CREDIT_DEFAULTS.get("decomposed_advantage", True))
@@ -153,8 +151,8 @@ def resolve_runtime_args(args_cli) -> None:
 
     # Set the GPU before Isaac Sim starts (CUDA_VISIBLE_DEVICES must precede CUDA init)
     expose_gpu(args_cli, "cuda:0")
-    print(f"[GPU] Menggunakan GPU index {args_cli.gpu} (CUDA_VISIBLE_DEVICES={args_cli.gpu})")
-    # Same env-config flags as play/validator (rl_env.env.runtime reads them on import).
+    print(f"[GPU] Using GPU index {args_cli.gpu} (CUDA_VISIBLE_DEVICES={args_cli.gpu})")
+    # Same env-config flags as the validator (rl_env.env.runtime reads them on import).
     publish_run_mode(args_cli)
     print(
         f"[MODE] control_mode={args_cli.mode} | model=PPO | PPO_head={args_cli.ppo_head} | "
@@ -163,7 +161,7 @@ def resolve_runtime_args(args_cli) -> None:
         f"scalar_critic={args_cli.scalar_critic}"
     )
 
-    # Same detector settings as play/validator; also enforces object/detector consistency.
+    # Same detector settings as the validator.
     publish_yolo_env(args_cli)
     print(
         "[YOLO] runtime config -> "

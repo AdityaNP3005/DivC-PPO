@@ -1,10 +1,10 @@
 """Paper presets: the two methods, the two mechanism controls, and the evaluation conditions.
 
 Both methods use the symmetric critic and the simulator-state (GT) training reward, as in the
-paper. Each preset is a bundle of environment variables that run.sh forwards into the container.
+paper. Each preset is a bundle of environment variables read when the config is imported.
 
-    python -m config.experiment method divc-ppo [--control shared-ratio]
-    python -m config.experiment condition noise_0.0005
+    export $(python3 -m config.experiment method divc-ppo [--control shared-ratio])
+    export $(python3 -m config.experiment condition noise_0.0005)
 """
 
 PROTOCOL = "divc_ppo_paper"

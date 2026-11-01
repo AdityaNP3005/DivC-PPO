@@ -77,7 +77,7 @@ def configure_inference_detector(args):
 
 
 def load_inference_policy(base_env, checkpoint, normalizer, *, seed, device, simulation_app):
-    """SB3 wrapper + frozen checkpoint VecNormalize + PPO for play/validation. Exits on mismatch.
+    """SB3 wrapper + frozen checkpoint VecNormalize + PPO for validation. Exits on mismatch.
 
     A missing normalizer or an observation-shape mismatch would silently feed the policy
     wrongly scaled/shaped inputs, so both abort the evaluation.

@@ -26,9 +26,7 @@ def _make_object_spawn():
     """Object spawn for the per-env target.
 
     Default (OBJECT_USD unset) → the primitive orange cylinder.
-    OBJECT_USD set → reference that USD (for example another graspable primitive shape,
-    authored by tools/make_primitive_object.py) so the wrist camera renders that object for the
-    in-scene YOLO dataset / per-object RL. Same kinematic+no-gravity props so the placement event
+    OBJECT_USD set → reference that USD (another object; it needs a matching detector). Same kinematic+no-gravity props so the placement event
     fully controls its pose (no falling), identical to the cylinder.
     """
     if OBJECT_USD:
@@ -120,8 +118,7 @@ class UR10eSceneCfg(InteractiveSceneCfg):
             # inner_finger_pad). In the USD these are driven by a MIMIC constraint that is
             # NOT applied in sim → they are passive (no drive), so set_joint_position_target
             # was ignored and the pad never wrapped (pads met at the tip). Giving them an
-            # explicit position drive makes the scripted close actually move them so the pad
-            # faces stay parallel and grip the object. Held at open (0) during training.
+            # explicit position drive keeps them at the open position (0) during training.
             "gripper_distal": ImplicitActuatorCfg(
                 joint_names_expr=GRIPPER_DISTAL_JOINTS_EXPR,
                 effort_limit_sim=None,

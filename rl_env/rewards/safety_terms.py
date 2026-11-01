@@ -30,7 +30,7 @@ def yolo_no_detection_penalty(
 
     The reward term weight is negative, so invalid detection becomes a penalty.
 
-    - Jika terdeteksi DAN conf >= threshold -> 0.0
+    - Detection with conf >= threshold -> 0.0
     - No detection or conf < threshold -> penalty_value (default 1.0)
     Shape: [num_envs]
     """
@@ -70,7 +70,7 @@ def joint_limit_clamp_penalty(
         penalty   = (hit_upper | hit_lower).float().sum(dim=-1)
 
     Output = number of joints beyond the limit.
-    Dengan weight=-5: 1 joint hit → -5/step, 3 joint hit → -15/step.
+    With weight=-20: one joint over the limit gives -20 per step.
     """
     from isaaclab.assets import Articulation
     asset: Articulation = env.scene[asset_cfg.name]

@@ -1,6 +1,6 @@
 """Shared USD patching utilities for UR10e training and evaluation.
 
-Imported by train_ur10e.py and play.py, so a change here
+Imported by train_ur10e.py and the validator, so a change here
 applies to both.
 
 Fungsi utama:
@@ -30,7 +30,7 @@ def _ensure_tmp_object_usd(src_usd: str) -> None:
             shutil.copy2(src_object, tmp_object)
             print(f"[INFO] [usd_utils] Copied dependency: {src_object} -> {tmp_object}")
         except Exception as e:
-            print(f"[WARNING] [usd_utils] Gagal copy dependency object.usd: {e}")
+            print(f"[WARNING] [usd_utils] Could not copy the object.usd dependency: {e}")
 
 
 def _temp_stage_copy(src: str, prefix: str):
@@ -77,7 +77,7 @@ def make_robot_usd(src: str) -> str:
             if cur.isExplicit:
                 new_op.explicitItems = _strip(cur.explicitItems)
             spec.SetInfo("apiSchemas", new_op)
-            print("[INFO] [usd_utils] Fix: nested ArticulationRoot diperbaiki")
+            print("[INFO] [usd_utils] Fix: nested ArticulationRoot repaired")
 
     # Fix: XformStack reset for the RigidBody on the camera mount (rsd455/RSD455)
     # Fix: nested RigidBody hierarchy error on the camera mount (rsd455/RSD455)
@@ -163,13 +163,13 @@ def _patch_scene_entity_body(params, key, ee_name):
     if cfg is None or not hasattr(cfg, "body_names"):
         return
     # Only patch configs that already target a body. SceneEntityCfg("robot")
-    # must stay as the whole articulation for scripted IK/gripper control.
+    # must stay as the whole articulation.
     if getattr(cfg, "body_names", None) is not None:
         cfg.body_names = [ee_name]
 
 
 def _patch_gripper_fallbacks(robot_usd: str, env_cfg) -> None:
-    """Patch train/play cfg to the active gripper EE body.
+    """Patch the env cfg to the active gripper EE body.
 
     The controlled gripper joint stays fixed as finger_joint for both Robotiq
     2F-85 and 2F-140. Only the EE body name is allowed to fallback because USD
@@ -195,7 +195,7 @@ def _patch_gripper_fallbacks(robot_usd: str, env_cfg) -> None:
             f"keeping '{ee_name}'."
         )
     else:
-        print(f"[INFO] [usd_utils] EE body aktif: {ee_name} ({ee_path})")
+        print(f"[INFO] [usd_utils] Active EE body: {ee_name} ({ee_path})")
 
     # Cartesian action target body.
     arm_action = getattr(getattr(env_cfg, "actions", None), "arm_action", None)
@@ -223,7 +223,7 @@ def _patch_gripper_fallbacks(robot_usd: str, env_cfg) -> None:
 def patch_and_load_stage(src_usd: str, env_cfg) -> tuple:
     """Main entry point: patch env_cfg and load the env sublayer into the stage.
 
-    Langkah:
+    Steps:
         1. Write robot_usd (ArticulationRoot fix, only /World/ur10e)
         2. Write env_usd (the whole scene without the robot)
         3. Patch env_cfg.scene.robot.spawn.usd_path → robot_usd

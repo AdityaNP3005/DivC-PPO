@@ -230,7 +230,7 @@ def setup_model(
         if runtime_log_std is not None:
             active_agent_cfg["policy_kwargs"]["log_std_init"] = float(runtime_log_std)
 
-        # Resume intentionally follows run_settings.py. The checkpoint provides
+        # Resume intentionally follows config/training.py. The checkpoint provides
         # network weights and optimizer state; active PPO hyperparameters come
         # from PPO_DEFAULTS plus optional RESUME_DEFAULTS.
         dump_yaml(os.path.join(params_dir, "agent.yaml"), build_agent_snapshot_cfg(active_agent_cfg, args_cli=args_cli, actor_obs_dim=actor_obs_dim, obs_dim=obs_dim, privileged_obs_dim=privileged_obs_dim))
@@ -327,7 +327,7 @@ def setup_model(
         apply_ppo_head_runtime(model, env, "resume", args_cli=args_cli, actor_obs_dim=actor_obs_dim, obs_dim=obs_dim, privileged_obs_dim=privileged_obs_dim)
 
         # SB3 restores optimizer state from checkpoint after setup; make sure the
-        # active learning rate from run_settings.py also reaches optimizer groups.
+        # active learning rate from config/training.py also reaches optimizer groups.
         new_lr = float(active_agent_cfg["learning_rate"])
         model.learning_rate = new_lr
         model.lr_schedule = _const_schedule(new_lr)
@@ -392,7 +392,7 @@ def setup_model(
             )
 
         print(
-            "[INFO] PPO resume hyperparameters applied from run_settings.py: "
+            "[INFO] PPO resume hyperparameters applied from config/training.py: "
             + ", ".join(f"{k}={v}" for k, v in ppo_overrides.items())
         )
         if resume_overrides_from_settings:

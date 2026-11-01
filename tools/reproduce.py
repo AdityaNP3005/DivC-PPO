@@ -1,9 +1,10 @@
-"""Train and evaluate every run behind the paper tables (host-side driver for run.sh).
+"""Train and evaluate every run behind the paper tables.
 
 Runs: PPO and DivC-PPO, plus the shared-ratio and scrambled controls of DivC-PPO, each for
-seeds 42, 44 and 46 (12 trainings of 1M steps). All runs get the nominal evaluation
-(1,024 episodes); PPO and DivC-PPO also get the 16 perturbation conditions (>=100 episodes).
-Finished steps are skipped, so the script can be stopped and restarted.
+seeds 42, 44 and 46 (12 trainings of 1,015,808 environment steps). All runs get the nominal
+evaluation (1,024 episodes); PPO and DivC-PPO also get the 16 perturbation conditions
+(>=100 episodes). Finished steps are skipped, so the script can be stopped and restarted.
+Each step is one Isaac Lab process started with `$ISAACLAB_SH -p` (default: isaaclab.sh on PATH).
 
     python3 tools/reproduce.py [--dry-run] [--only train|eval] [--seeds 42 44 46] [--results results]
 Then: python3 tools/tables.py results && python3 tools/figures.py results
@@ -12,34 +13,35 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from config.experiment import CONDITIONS, SEEDS  # noqa: E402
+from config.experiment import CONDITIONS, SEEDS, condition_env, method_env  # noqa: E402
 from rl_env.project_config import MODEL_DIR_NAME  # noqa: E402
 
 RUNS = {"ppo": ("ppo", None), "divc-ppo": ("divc-ppo", None),
         "shared-ratio": ("divc-ppo", "shared-ratio"), "scrambled": ("divc-ppo", "scrambled")}
 PERTURBED = ("ppo", "divc-ppo")  # Table V covers the two methods only
+ISAACLAB = os.environ.get("ISAACLAB_SH", "isaaclab.sh")
 
 
-def run_sh(args, env=None, dry=False):
-    print("$ ./run.sh " + " ".join(args), flush=True)
+def isaaclab(script, args, env, dry):
+    command = [ISAACLAB, "-p", script, *args]
+    print("$ " + " ".join(f"{k}={v}" for k, v in env.items()) + " " + shlex.join(command), flush=True)
     if not dry:
-        subprocess.run([str(ROOT / "run.sh"), *args], cwd=ROOT, check=True, env={**os.environ, **(env or {})})
+        subprocess.run(command, cwd=ROOT, check=True, env={**os.environ, **env})
 
 
 def train(name, seed, runs, dry):
     key = f"{name}_seed{seed}"
     if key in runs:
         return
-    method, control = RUNS[name]
     logs = ROOT / "logs/sb3" / MODEL_DIR_NAME
     before = set(logs.glob("*/model.zip"))
-    run_sh(["train", method, *(["--control", control] if control else []), "--seed", str(seed),
-            "--headless", "--skip_post_video"], dry=dry)
+    isaaclab("train_ur10e.py", ["--headless"], dict(method_env(*RUNS[name]), SEED=str(seed)), dry)
     if dry:
         return
     new = sorted(set(logs.glob("*/model.zip")) - before)
@@ -56,7 +58,8 @@ def evaluate(name, seed, model, results, dry):
             continue
         if out.exists() and any(out.iterdir()):
             raise SystemExit(f"{out} holds an incomplete evaluation; move it away and rerun")
-        run_sh(["validate", model, "--condition", condition, "--seed", str(seed), "--out", str(out)], dry=dry)
+        isaaclab("evaluate.py", ["--checkpoint", model, "--seed", str(seed), "--out", str(out)],
+                 condition_env(condition), dry)
 
 
 def main():
@@ -79,10 +82,9 @@ def main():
                     manifest.write_text(json.dumps(runs, indent=2) + "\n")
             key = f"{name}_seed{seed}"
             if args.only != "train":
-                model = runs.get(key, f"<{key} model.zip>")
                 if key not in runs and not args.dry_run:
                     raise SystemExit(f"{key} has no trained model in {manifest}")
-                evaluate(name, seed, model, results, args.dry_run)
+                evaluate(name, seed, runs.get(key, f"<{key} model.zip>"), results, args.dry_run)
 
 
 if __name__ == "__main__":

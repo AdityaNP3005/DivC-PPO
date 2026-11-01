@@ -25,7 +25,6 @@ def close_failed_app(error):
     for frame, _ in traceback.walk_tb(error.__traceback__):
         for variable, filename, complete_key in (
             ('out_dir', 'validation_status.json', 'validation_complete'),
-            ('video_dir', 'play_status.json', 'play_complete'),
         ):
             output = frame.f_locals.get(variable) or frame.f_globals.get(variable)
             if not output:

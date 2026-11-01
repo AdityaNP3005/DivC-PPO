@@ -1,4 +1,4 @@
-"""The one way train, play, the validator and tools build the Isaac env (after AppLauncher)."""
+"""The one way training and validation build the Isaac env (after AppLauncher)."""
 
 import gymnasium as gym
 import torch

@@ -1,7 +1,6 @@
 """Everything a training run writes to its run dir: name, periodic checkpoints, final handoff.
 
-training_result.json is the exact final-model handoff and source of identity for
-train → play → validation.
+training_result.json records the exact final model and its identity for validation.
 """
 import os
 from collections import deque
@@ -15,7 +14,7 @@ from evaluation.validation_contract import atomic_json, file_digest
 def run_dir_name(args_cli, timestamp: str) -> str:
     """Run directory name; tags mark only deviations from the matched-baseline defaults.
 
-    Run discovery reads agent.yaml (analysis/run_index.py), never this tag.
+    Analysis reads params/agent.yaml, never this tag.
     """
     from config.policy import CREDIT_DEFAULTS
 

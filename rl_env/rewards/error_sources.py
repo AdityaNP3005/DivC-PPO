@@ -59,7 +59,7 @@ def gt_task_target_pos_w(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 
 def gt_target_error_w(env: "ManagerBasedRLEnv", ee_body_id: int) -> torch.Tensor:
-    """GT target − EE [N,3], world frame (monitor/validator/play sign).
+    """GT target − EE [N,3], world frame (monitor and validator sign).
 
     Reward terms use the opposite sign (_gt_ee_target_error_w = EE − target).
     """

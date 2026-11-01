@@ -100,10 +100,10 @@ def require_valid_metrics(metrics):
 def create_evaluation_directory(checkpoint, output=None):
     """One attempt per directory; periodic and final checkpoints have distinct stems."""
     from datetime import datetime
-    from rl_env.project_config import VIDEO_ROOT
+    from rl_env.project_config import EVAL_ROOT
     model = Path(checkpoint)
     if output is None:
-        parent = Path(VIDEO_ROOT) / model.parent.name / model.stem
+        parent = Path(EVAL_ROOT) / model.parent.name / model.stem
         output = parent / ("inference_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f"))
     output = Path(output)
     if output.exists() and any(output.iterdir()):

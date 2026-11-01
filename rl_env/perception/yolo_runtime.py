@@ -26,7 +26,7 @@ def _prepare_ultralytics_runtime() -> None:
     inference can use its pure TorchNMS path as long as torchvision is not loaded.
 
     Keep sys.path order untouched. Isaac Sim, SB3, and Torch are sensitive to
-    mixing packages from Isaac's Python tree and /storage/venv after startup.
+    mixing packages from Isaac's Python tree and a separate package tree after startup.
     """
     for name in list(sys.modules):
         if name == "torchvision" or name.startswith("torchvision."):
@@ -50,7 +50,7 @@ def _patch_ultralytics_network_checks() -> None:
             except Exception:
                 pass
     except Exception:
-        # Do not interrupt training/play if the patch is unavailable.
+        # Do not interrupt training/validation if the patch is unavailable.
         pass
 
 
