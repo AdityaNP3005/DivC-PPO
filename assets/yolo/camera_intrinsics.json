@@ -1,0 +1,9 @@
+{
+  "fx": 317.0431213378906,
+  "fy": 317.0431213378906,
+  "cx": 320.0,
+  "cy": 320.0,
+  "width": 640,
+  "height": 640,
+  "source": "IsaacLab TiledCamera.data.intrinsic_matrices"
+}
