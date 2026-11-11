@@ -48,7 +48,9 @@ isaaclab.sh -p evaluate.py --checkpoint logs/sb3/Isaac-UR10e-DivC-Reach-v0/<run>
 ```
 
 A training run requests 1M environment steps over 128 parallel environments. It completes
-after 31 rollouts of 256 steps (1,015,808 steps), which took about 72 minutes on our hardware.
+after 31 rollouts of 256 steps (1,015,808 steps). The paper runs took about 72 minutes each.
+Detection postprocessing now runs as one batch on the GPU, which brings a run to about 18 minutes on
+the same hardware and moves box centers by at most 3e-5 px against the code used for the paper.
 Models and TensorBoard logs are written to `logs/sb3/Isaac-UR10e-DivC-Reach-v0/<timestamp>_.../`.
 The validator writes `inference_metrics.json` and `inference_records.npz` to `--out`.
 

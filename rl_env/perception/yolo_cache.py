@@ -19,38 +19,14 @@ from isaaclab.managers import SceneEntityCfg
 
 from config import YOLO_CACHE_NORM_DEPTH_M, YOLO_CACHE_NORM_PX
 from rl_env.perception.yolo_runtime import (
-    _extract_area_depth_in_detection_box,
-    _extract_depth_at_pixel,
+    _best_unmasked_detections,
     _get_yolo_model,
     _get_yolo_settings,
-    _select_best_unmasked_detection,
+    _tensor_box_predictor,
 )
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-
-# cx, cy, w, h, depth, depth_area, conf, has_det
-_NO_DETECTION = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-
-
-def _best_detection_row(result, depth_img: torch.Tensor, image_width: int, image_height: int) -> tuple:
-    if result.boxes is None or len(result.boxes) == 0:
-        return _NO_DETECTION
-    confs = result.boxes.conf.detach().cpu().numpy()
-    xyxy_all = result.boxes.xyxy.detach().cpu().numpy()
-    best_idx = _select_best_unmasked_detection(
-        xyxy_all, confs, image_width=image_width, image_height=image_height
-    )
-    if best_idx < 0:  # every candidate center was inside the gripper exclusion
-        return _NO_DETECTION
-    x1, y1, x2, y2 = xyxy_all[best_idx].tolist()
-    cx = (x1 + x2) * 0.5
-    cy = (y1 + y2) * 0.5
-    # Task depth uses the detection area (gripper pixels excluded); center pixel is the fallback.
-    depth_area = _extract_area_depth_in_detection_box(depth_img, x1, y1, x2, y2)
-    depth = depth_area if depth_area > 0.0 else _extract_depth_at_pixel(depth_img, int(round(cx)), int(round(cy)))
-    return (cx, cy, max(0.0, x2 - x1), max(0.0, y2 - y1), depth, depth_area, float(confs[best_idx]), 1.0)
-
 
 def _get_yolo_detection_cache(
     env: "ManagerBasedRLEnv",
@@ -71,36 +47,35 @@ def _get_yolo_detection_cache(
     except KeyError as e:
         raise KeyError(f"Wrist camera sensor '{sensor_cfg.name}' not found in env.scene.sensors") from e
     try:
-        rgb_np = sensor.data.output[rgb_type].detach().cpu().numpy()
-        depth_cpu = sensor.data.output[depth_type].detach().cpu()
+        rgb = sensor.data.output[rgb_type][..., :3]
+        depth_maps = sensor.data.output[depth_type]  # stays on the GPU: only the detection boxes are read
     except Exception as e:
         raise RuntimeError(
             f"Failed to read camera outputs '{rgb_type}'/'{depth_type}' from sensor '{sensor_cfg.name}': {e}"
         ) from e
 
     conf, iou, device, max_det = _get_yolo_settings()
-    # Isaac camera tensors are RGB; Ultralytics numpy inputs are BGR. Request extra
-    # candidates so the exclusion filter can recover the object after the gripper box.
-    images = [img[..., :3][..., ::-1].copy() for img in rgb_np]
+    # Isaac camera tensors are RGB on the GPU and Ultralytics takes an RGB BCHW 0-1 tensor as is (the square
+    # frame needs no letterbox), so no image is copied to the CPU. Extra candidates let the exclusion filter
+    # recover the object after the gripper box.
+    images = rgb.permute(0, 3, 1, 2).float().div_(255.0).contiguous()
     try:
-        results = _get_yolo_model().predict(
-            images, conf=conf, iou=iou, device=device, verbose=False, max_det=max(int(max_det), 5)
+        model = _get_yolo_model()
+        model.predict(
+            images, conf=conf, iou=iou, device=device, verbose=False, max_det=max(int(max_det), 5),
+            predictor=_tensor_box_predictor(),
         )
-        rows = [
-            _best_detection_row(result, depth_cpu[i], rgb_np[i].shape[1], rgb_np[i].shape[0])
-            for i, result in enumerate(results)
-        ]
+        # NMS, the gripper filter and the box depths run on the whole batch on the GPU.
+        det = _best_unmasked_detections(*model.predictor.top, depth_maps[..., 0])
     except Exception as e:
         raise RuntimeError(f"YOLO detection pipeline failed at step {step}: {e}") from e
 
-    cx, cy, w, h, depth, depth_area, conf_t, has_det = (
-        torch.tensor(column, device=env.device, dtype=torch.float32) for column in zip(*rows)
-    )
-    cache["center_norm"] = torch.stack([cx, cy], dim=-1) / YOLO_CACHE_NORM_PX
-    cache["size_norm"] = torch.stack([w, h], dim=-1) / YOLO_CACHE_NORM_PX
-    cache["depth_norm"] = depth.unsqueeze(-1) / YOLO_CACHE_NORM_DEPTH_M
-    cache["depth_area_norm"] = depth_area.unsqueeze(-1) / YOLO_CACHE_NORM_DEPTH_M
-    cache["conf"] = conf_t
-    cache["has_det"] = has_det
+    x1, y1, x2, y2 = det["xyxy"].unbind(1)
+    cache["center_norm"] = torch.stack([x1 + x2, y1 + y2], dim=-1) * 0.5 / YOLO_CACHE_NORM_PX
+    cache["size_norm"] = torch.stack([x2 - x1, y2 - y1], dim=-1).clamp(min=0.0) / YOLO_CACHE_NORM_PX
+    cache["depth_norm"] = det["depth"].unsqueeze(-1) / YOLO_CACHE_NORM_DEPTH_M
+    cache["depth_area_norm"] = det["depth_area"].unsqueeze(-1) / YOLO_CACHE_NORM_DEPTH_M
+    cache["conf"] = det["conf"]
+    cache["has_det"] = det["has_det"]
     cache["step"] = step
     return cache

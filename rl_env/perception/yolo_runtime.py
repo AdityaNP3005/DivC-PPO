@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 """YOLO runtime: SAM-free Ultralytics import, lazy model singleton, inference
-settings, gripper exclusion, and robust depth extraction helpers."""
+settings, batched box selection, gripper exclusion and box depth."""
 
 import importlib
-import math
 import os
 import sys
 import types
@@ -109,6 +108,31 @@ def _get_yolo_settings() -> tuple[float, float, str, int]:
     return conf, iou, device, max_det
 
 
+@lru_cache(maxsize=1)
+def _tensor_box_predictor():
+    """Ultralytics detection predictor for tensor batches that are the original frames (no letterbox): boxes only.
+
+    The stock postprocess copies every input image back to a numpy array just to store Results.orig_img and runs NMS
+    in a Python loop per image (about 87 ms per step at 128 envs). Here the kept boxes of the whole batch are left
+    on predictor.top (see _top_boxes) in the frame's pixel coordinates (clipped to it, as stock). List (numpy)
+    inputs keep the stock path.
+    """
+    _prepare_ultralytics_runtime()
+    _import_yolo_class_without_sam()
+    from ultralytics.models.yolo.detect.predict import DetectionPredictor
+
+    class TensorBoxPredictor(DetectionPredictor):
+        def postprocess(self, preds, img, orig_imgs, **kwargs):
+            if isinstance(orig_imgs, list):
+                return super().postprocess(preds, img, orig_imgs, **kwargs)
+            if self.args.classes is not None or self.args.agnostic_nms or getattr(self.model, "end2end", False):
+                raise RuntimeError("TensorBoxPredictor covers plain per-class detection NMS only")
+            self.top = _top_boxes(preds, self.args.conf, self.args.iou, self.args.max_det, img.shape[2:])
+            return [types.SimpleNamespace() for _ in orig_imgs]  # predict() only sets .speed on these
+
+    return TensorBoxPredictor
+
+
 def _scaled_gripper_exclusion_polygons_px(
     image_width: int = 640,
     image_height: int = 640,
@@ -127,67 +151,104 @@ def _scaled_gripper_exclusion_polygons_px(
     )
 
 
-def _point_in_polygon_inclusive(
-    px: float,
-    py: float,
-    polygon: tuple[tuple[float, float], ...],
-) -> bool:
-    inside = False
-    for index, (x1, y1) in enumerate(polygon):
-        x2, y2 = polygon[(index + 1) % len(polygon)]
-        cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1)
-        if (
-            abs(cross) <= 1e-7
-            and min(x1, x2) - 1e-7 <= px <= max(x1, x2) + 1e-7
-            and min(y1, y2) - 1e-7 <= py <= max(y1, y2) + 1e-7
-        ):
-            return True
-        if (y1 > py) != (y2 > py):
-            x_cross = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
-            if px < x_cross:
-                inside = not inside
-    return inside
-
-
-def _center_outside_gripper_exclusion(
-    cx: float,
-    cy: float,
-    image_width: int = 640,
-    image_height: int = 640,
-) -> bool:
+def _centres_in_gripper_exclusion(cx: torch.Tensor, cy: torch.Tensor, image_width: int, image_height: int) -> torch.Tensor:
+    """True where a box centre lies inside or on the edge of a gripper polygon (all False when YOLO_ROI_ENABLED=0)."""
     from config import YOLO_ROI_ENABLED
 
+    inside_any = torch.zeros_like(cx, dtype=torch.bool)
     if not YOLO_ROI_ENABLED:
-        return True
-    return not any(
-        _point_in_polygon_inclusive(cx, cy, polygon)
-        for polygon in _scaled_gripper_exclusion_polygons_px(image_width, image_height)
-    )
+        return inside_any
+    px, py = cx.double(), cy.double()
+    for polygon in _scaled_gripper_exclusion_polygons_px(image_width, image_height):
+        inside, on_edge = torch.zeros_like(inside_any), torch.zeros_like(inside_any)
+        for index, (x1, y1) in enumerate(polygon):  # even-odd ray casting, edges count as inside
+            x2, y2 = polygon[(index + 1) % len(polygon)]
+            cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1)
+            on_edge |= ((cross.abs() <= 1e-7) & (px >= min(x1, x2) - 1e-7) & (px <= max(x1, x2) + 1e-7)
+                        & (py >= min(y1, y2) - 1e-7) & (py <= max(y1, y2) + 1e-7))
+            if y1 != y2:
+                inside ^= ((y1 > py) != (y2 > py)) & (px < x1 + (py - y1) * (x2 - x1) / (y2 - y1))
+        inside_any |= inside | on_edge
+    return inside_any
 
 
-def _select_best_unmasked_detection(
-    xyxy,
-    confs,
-    image_width: int = 640,
-    image_height: int = 640,
-) -> int:
-    best_index = -1
-    best_confidence = -1.0
-    for index, box in enumerate(xyxy):
-        x1, y1, x2, y2 = [float(value) for value in box]
-        confidence = float(confs[index])
-        if confidence <= best_confidence:
-            continue
-        if not _center_outside_gripper_exclusion(
-            (x1 + x2) * 0.5,
-            (y1 + y2) * 0.5,
-            image_width=image_width,
-            image_height=image_height,
-        ):
-            continue
-        best_index = index
-        best_confidence = confidence
-    return best_index
+def _top_boxes(preds, conf_thres: float, iou_thres: float, max_det: int, shape, max_wh: int = 7680):
+    """Ultralytics non_max_suppression + clip_boxes for the whole batch at once.
+
+    (boxes [B, max_det, 6] = xyxy, conf, class; kept [B, max_det]), highest confidence first. The greedy rule is
+    TorchNMS.nms (keep the best box, drop the rest above the IoU threshold, repeat), run on all images together.
+    """
+    pred = (preds[0] if isinstance(preds, (list, tuple)) else preds).transpose(1, 2)  # [B, N, 4 + nc]
+    conf, cls = pred[..., 4:].max(-1)
+    cand = conf > conf_thres
+    k = max(int(cand.sum(1).max()), 1)
+    conf, order = torch.where(cand, conf, -1.0).topk(k, dim=1)  # sorted, candidates first
+    alive = conf > conf_thres
+    cls = cls.gather(1, order).float()
+    xywh = pred[..., :4].gather(1, order.unsqueeze(-1).expand(-1, -1, 4))
+    xyxy = torch.cat([xywh[..., :2] - xywh[..., 2:] / 2, xywh[..., :2] + xywh[..., 2:] / 2], -1)
+    x1, y1, x2, y2 = (xyxy + cls.unsqueeze(-1) * max_wh).unbind(-1)  # classes never suppress each other
+    area = (x2 - x1) * (y2 - y1)
+    rows = torch.arange(pred.shape[0], device=pred.device)
+    picks, kept = [], []
+    for _ in range(max_det):
+        i = (alive.cumsum(1) == 0).sum(1)  # first box still alive
+        kept.append(i < k)
+        i = i.clamp(max=k - 1)
+        picks.append(i)
+        alive[rows, i] = False
+        pick = lambda v: v[rows, i].unsqueeze(1)
+        inter = ((torch.minimum(pick(x2), x2) - torch.maximum(pick(x1), x1)).clamp_(min=0)
+                 * (torch.minimum(pick(y2), y2) - torch.maximum(pick(y1), y1)).clamp_(min=0))
+        no_overlap = (inter * alive).sum(1, keepdim=True) == 0  # stock early exit: nothing touches the kept box
+        alive &= no_overlap | (inter / (pick(area) + area - inter) <= iou_thres)
+    picks, kept = torch.stack(picks, 1), torch.stack(kept, 1)
+    boxes = torch.cat([xyxy, conf.unsqueeze(-1), cls.unsqueeze(-1)], -1).gather(1, picks.unsqueeze(-1).expand(-1, -1, 6))
+    boxes[..., [0, 2]] = boxes[..., [0, 2]].clamp(0, shape[1])
+    boxes[..., [1, 3]] = boxes[..., [1, 3]].clamp(0, shape[0])
+    return boxes, kept
+
+
+def _best_unmasked_detections(boxes: torch.Tensor, kept: torch.Tensor, depth: torch.Tensor) -> dict[str, torch.Tensor]:
+    """Per image: the most confident kept box whose centre is outside the gripper polygons, with its depths (all on the GPU).
+
+    boxes/kept from _top_boxes, depth [B, H, W] in metres. Returns xyxy [B, 4], conf, has_det, depth_area (the
+    YOLO_DEPTH_PERCENTILE of the valid, unmasked depth pixels in the box, 0 when none) and depth (depth_area, else the
+    centre pixel, else 0). Images without a detection get zeros.
+    """
+    from config import YOLO_DEPTH_PERCENTILE
+
+    boxes, kept = boxes.to(depth.device), kept.to(depth.device)  # the detector may sit on another device than the sim
+    n, (h, w) = boxes.shape[0], depth.shape[1:]
+    rows = torch.arange(n, device=depth.device)
+    mask = torch.as_tensor(_gripper_exclusion_mask(h, w), device=depth.device)
+    px = lambda v, top: v.long().clamp(0, top - 1)
+    centre = (boxes[..., :2] + boxes[..., 2:4]) * 0.5
+    ok = kept & ~_centres_in_gripper_exclusion(centre[..., 0], centre[..., 1], w, h)
+    first = (ok.cumsum(1) == 0).sum(1)  # boxes are sorted by confidence
+    has = first < boxes.shape[1]
+    box = boxes[rows, first.clamp(max=boxes.shape[1] - 1)] * has.unsqueeze(1)
+    x1, y1, x2, y2 = px(box[:, 0], w), px(box[:, 1], h), px(box[:, 2], w), px(box[:, 3], h)
+    in_box = has & (x1 < x2) & (y1 < y2)
+    # one padded crop per image, as large as the largest box of this batch
+    ys = y1[:, None] + torch.arange(int((y2 - y1).max()) + 1, device=depth.device)
+    xs = x1[:, None] + torch.arange(int((x2 - x1).max()) + 1, device=depth.device)
+    yy, xx = ys.clamp(max=h - 1)[:, :, None], xs.clamp(max=w - 1)[:, None, :]
+    crop = depth[rows[:, None, None], yy, xx].float()
+    good = ((ys <= y2[:, None])[:, :, None] & (xs <= x2[:, None])[:, None, :] & in_box[:, None, None]
+            & torch.isfinite(crop) & (crop > 0.0) & ~mask[yy, xx]).flatten(1)
+    values = torch.where(good, crop.flatten(1), torch.inf).sort(1).values
+    count = good.sum(1)
+    rank = torch.tensor(float(YOLO_DEPTH_PERCENTILE), device=depth.device) * (count - 1).clamp(min=0)  # torch.quantile
+    below, above = values[rows, rank.floor().long()], values[rows, rank.ceil().long()]
+    area = torch.lerp(below, above, rank - rank.floor())
+    area = torch.where((count > 0) & torch.isfinite(area), area, 0.0)
+    cx, cy = ((box[:, 0] + box[:, 2]) * 0.5).round(), ((box[:, 1] + box[:, 3]) * 0.5).round()
+    cx, cy = px(cx, w), px(cy, h)
+    point = depth[rows, cy, cx].float()
+    point = torch.where(has & ~mask[cy, cx] & torch.isfinite(point), point, 0.0)
+    return {"xyxy": box[:, :4], "conf": box[:, 4], "has_det": has.float(),
+            "depth_area": area, "depth": torch.where(area > 0.0, area, point)}
 
 
 @lru_cache(maxsize=8)
@@ -238,51 +299,3 @@ def _draw_gripper_exclusion(img, color=(255, 0, 0), alpha: float = 0.28, thickne
         cv2.LINE_AA,
     )
     return img
-
-
-def _depth_2d(depth_img: torch.Tensor) -> torch.Tensor:
-    """[H, W] depth from an [H, W] or [H, W, 1] camera output."""
-    return depth_img[..., 0] if depth_img.dim() == 3 else depth_img
-
-
-def _extract_depth_at_pixel(depth_img: torch.Tensor, px: int, py: int) -> float:
-    depth_img = _depth_2d(depth_img)
-    h, w = depth_img.shape[:2]
-    px = max(0, min(w - 1, int(px)))
-    py = max(0, min(h - 1, int(py)))
-    if _gripper_exclusion_mask(h, w)[py, px]:
-        return 0.0
-    depth_val = depth_img[py, px].item()
-    if depth_val == float("inf") or math.isnan(depth_val):
-        return 0.0
-    return float(depth_val)
-
-
-def _extract_area_depth_in_detection_box(depth_img: torch.Tensor, x1: int, y1: int, x2: int, y2: int) -> float:
-    """Extract robust object depth from valid pixels inside the detection area.
-
-    We use a low percentile instead of a single center pixel or raw min. This
-    still represents the object surface visible in the detection box, but is less noisy
-    than taking one closest pixel.
-    """
-    depth_img = _depth_2d(depth_img)
-    h, w = depth_img.shape[:2]
-
-    x1 = max(0, min(w - 1, int(x1)))
-    y1 = max(0, min(h - 1, int(y1)))
-    x2 = max(0, min(w - 1, int(x2)))
-    y2 = max(0, min(h - 1, int(y2)))
-    if x1 >= x2 or y1 >= y2:
-        return 0.0
-
-    region = depth_img[y1:y2 + 1, x1:x2 + 1]
-    excluded = torch.from_numpy(_gripper_exclusion_mask(h, w)[y1:y2 + 1, x1:x2 + 1])
-    valid = region[~torch.isinf(region) & ~torch.isnan(region) & ~excluded]
-    valid = valid[valid > 0.0]
-    if valid.numel() == 0:
-        return 0.0
-
-    from config import YOLO_DEPTH_PERCENTILE
-
-    depth_val = torch.quantile(valid.float(), float(YOLO_DEPTH_PERCENTILE)).item()
-    return float(depth_val) if math.isfinite(float(depth_val)) else 0.0
